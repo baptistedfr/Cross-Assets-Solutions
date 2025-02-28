@@ -29,6 +29,7 @@ seuil_pib_très_faible = 0.5  # Exemple : PIB inférieur à 1000 considéré com
 
 # Appliquer la fonction sur chaque ligne de la DataFrame
 macro_data['stress_level'] = macro_data.apply(MacroSensitivities.calc_stress_level, axis=1)
+macro_data.to_csv("results/macro_stress_data.csv")
 
 # Assuming macro_data is already defined
 macro_data_long = macro_data.reset_index().melt(id_vars='index', var_name='Variable', value_name='Value')

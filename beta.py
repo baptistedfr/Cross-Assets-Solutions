@@ -23,17 +23,17 @@ def closest(df, dt):
         return min(df.index, key=lambda x: abs(x.date() - dt))
 
 
-p = pd.read_csv("stoxx_600_prix.csv", index_col=0, parse_dates=True)
+p = pd.read_csv("datas/Tickers/stoxx_600_tickers_prix.csv", index_col=0, parse_dates=True)
 p  = p.drop('VMUK LN Equity', axis=1) # Pas de valeur pour ce ticker
 p = p.drop('LOOMIS SS Equity', axis=1) # Pas de valeur pour ce ticker
 
-comp = pd.read_csv("stoxx_600_compo.csv", index_col=0, parse_dates=True)
-sect = pd.read_csv("stoxx_600_secteurs.csv", index_col=0, parse_dates=True)
+comp = pd.read_csv("datas/Tickers/stoxx_600_compo.csv", index_col=0, parse_dates=True)
+sect = pd.read_csv("datas/Tickers/stoxx_600_secteurs.csv", index_col=0, parse_dates=True)
 comp = comp.drop('VMUK LN Equity', axis=1, errors='ignore')
 sect = sect.drop('VMUK LN Equity', axis=0, errors='ignore')
 comp = comp.drop('LOOMIS SS Equity', axis=1, errors='ignore')
 sect = sect.drop('LOOMIS SS Equity', axis=0, errors='ignore')
-p_index = pd.read_excel("stoxx600.xlsx", index_col=0, parse_dates=True)
+p_index = pd.read_excel("datas/stoxx600.xlsx", index_col=0, parse_dates=True)
 p_index = p_index.replace(',', '.', regex=True)
 p_index = p_index.astype(float)
 
@@ -85,12 +85,12 @@ for date in rebalancing_dates[1:]:
 
     all_betas.append(sector_betas)
 
-# all_betas_df = pd.DataFrame(all_betas)
-# all_betas_df.set_index('date', inplace=True)
-# all_betas_df.to_csv("evolution_sector_betas_bis.csv")
+all_betas_df = pd.DataFrame(all_betas)
+all_betas_df.set_index('date', inplace=True)
+all_betas_df.to_csv("results/evolution_sector_betas_bis.csv")
 
 # Assuming all_betas_df is already defined
-all_betas_df = pd.read_csv("evolution_sector_betas_bis.csv", index_col='date', parse_dates=True)
+all_betas_df = pd.read_csv("results/evolution_sector_betas_bis.csv", index_col='date', parse_dates=True)
 
 # Convert the DataFrame to a long-form format
 all_betas_long = all_betas_df.reset_index().melt(id_vars='date', var_name='Sector', value_name='Beta')

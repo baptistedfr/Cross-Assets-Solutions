@@ -1,7 +1,7 @@
 import pandas as pd
 import plotly.express as px
 from utils.utils import MacroSensitivities
-from backtest.backtest import Backtest
+from backtest import Backtest
 
 def closest(df, dt):
     """
@@ -21,26 +21,26 @@ def closest(df, dt):
     except Exception:
         return min(df.index, key=lambda x: abs(x.date() - dt))
 
-cpi = pd.read_csv("data_macro/cpi.csv", index_col=0, parse_dates=True)
-gdp = pd.read_csv("data_macro/gdp_growth.csv", index_col=0, parse_dates=True)
-unemployment = pd.read_csv("data_macro/unemployment_rate.csv", index_col=0, parse_dates=True)
-ten_year_yield = pd.read_csv("data_macro/ten_year_bond_yield.csv", index_col=0, parse_dates=True)
+cpi = pd.read_csv("../data_macro/cpi.csv", index_col=0, parse_dates=True)
+gdp = pd.read_csv("../data_macro/gdp_growth.csv", index_col=0, parse_dates=True)
+unemployment = pd.read_csv("../data_macro/unemployment_rate.csv", index_col=0, parse_dates=True)
+ten_year_yield = pd.read_csv("../data_macro/ten_year_bond_yield.csv", index_col=0, parse_dates=True)
 ten_year_yield = ten_year_yield.iloc[6:]
 ten_year_yield.index = pd.to_datetime(ten_year_yield.index)
 gdp = gdp.resample('M').last()
 gdp = gdp.fillna(method='ffill')
 
-p = pd.read_csv("stoxx_600_prix.csv", index_col=0, parse_dates=True)
-p = p.drop('VMUK LN Equity', axis=1)
-p = p.drop('LOOMIS SS Equity', axis=1)
+p = pd.read_csv("../datas/Tickers/stoxx_600_tickers_prix.csv", index_col=0, parse_dates=True)
+p  = p.drop('VMUK LN Equity', axis=1) # Pas de valeur pour ce ticker
+p = p.drop('LOOMIS SS Equity', axis=1) # Pas de valeur pour ce ticker
 
-comp = pd.read_csv("stoxx_600_compo.csv", index_col=0, parse_dates=True)
-sect = pd.read_csv("stoxx_600_secteurs.csv", index_col=0, parse_dates=True)
+comp = pd.read_csv("../datas/Tickers/stoxx_600_compo.csv", index_col=0, parse_dates=True)
+sect = pd.read_csv("../datas/Tickers/stoxx_600_secteurs.csv", index_col=0, parse_dates=True)
 comp = comp.drop('VMUK LN Equity', axis=1, errors='ignore')
 sect = sect.drop('VMUK LN Equity', axis=0, errors='ignore')
 comp = comp.drop('LOOMIS SS Equity', axis=1, errors='ignore')
 sect = sect.drop('LOOMIS SS Equity', axis=0, errors='ignore')
-p_index = pd.read_excel("stoxx600.xlsx", index_col=0, parse_dates=True)
+p_index = pd.read_excel("../datas/stoxx600.xlsx", index_col=0, parse_dates=True)
 p_index = p_index.replace(',', '.', regex=True)
 p_index = p_index.astype(float)
 
@@ -113,9 +113,9 @@ for date in rebalancing_dates[1:]:
 # Convert all_weights and performance to DataFrame for further analysis
 weights_df = pd.DataFrame(all_weights)
 weights_df.set_index('date', inplace=True)
-weights_df.to_csv("weights_backtest.csv")
+weights_df.to_csv("../results/weights_backtest.csv")
 
 performance_df = pd.DataFrame(performance)
 performance_df.set_index('date', inplace=True)
-performance_df.to_csv("performance_backtest.csv")
+performance_df.to_csv("../results/performance_backtest.csv")
 print(performance_df)
