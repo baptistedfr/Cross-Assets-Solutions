@@ -6,94 +6,54 @@ import plotly.graph_objects as go
 
 class MIDASModel:
     """
-    Modèle MIDAS (Mixed Data Sampling) utilisant une pondération exponentielle Almon.
+    Modèle MIDAS pour une variable macro.
 
-    Le modèle est défini par :
-
+    Modèle:
         y_t = α + β * Σ_{j=0}^{K} w(j, θ) * x_{t-j} + ε_t,
 
-    où la fonction de pondération est donnée par :
-
-        w(j, θ) = exp(θ₁ * j + θ₂ * j²) / Σ_{j=0}^{K} exp(θ₁ * j + θ₂ * j²).
-
-    Attributs
-    ---------
-    y : pd.Series
-        Série temporelle de la variable dépendante (par exemple, rendement ou niveau d'un secteur).
-    x : pd.Series
-        Série temporelle de la variable explicative (par exemple, taux allemand 10Y ou autre).
-    K : int
-        Nombre de retards (lags) utilisés pour la variable x.
-    params : dict
-        Dictionnaire contenant les paramètres estimés {alpha, beta, theta1, theta2}.
-    weights : np.array
-        Poids calculés pour les lags selon la fonction de pondération.
+    où:
+        w(j, θ) = exp(θ1 * j + θ2 * j²) / Σ_{j=0}^{K} exp(θ1 * j + θ2 * j²)
     """
 
     def __init__(self, y: pd.Series, x: pd.Series, K: int):
-
         self.y = y.copy()
         self.x = x.copy()
         self.K = K
         self.params = None
         self.weights = None
 
-        # On aligne les deux séries sur leur index commun (par exemple, les dates)
+        # Aligner les séries sur l'index commun
         common_index = self.y.index.intersection(self.x.index)
         self.y = self.y.loc[common_index]
         self.x = self.x.loc[common_index]
 
-        # Récupération des noms, si disponibles, sinon valeurs par défaut
+        # Récupération des noms pour les plots
         self.sector_name = self.y.name if self.y.name is not None else "Variable dépendante"
         self.macro_name = self.x.name if self.x.name is not None else "Variable explicative"
 
-    def almon_weights(self, theta1, theta2):
-        """
-        Calcule les poids de la fonction de pondération exponentielle Almon pour j = 0,...,K.
-        """
-        j = np.arange(self.K + 1)
+    def almon_weights(self, theta1, theta2, K=None):
+        if K is None:
+            K = self.K
+        j = np.arange(K + 1)
         w = np.exp(theta1 * j + theta2 * j ** 2)
-        w_normalized = w / np.sum(w)
-        return w_normalized
+        return w / np.sum(w)
 
     def midas_prediction(self, params):
-        """
-        Calcule les prédictions du modèle MIDAS pour l'ensemble des observations (à partir de l'observation K).
-        """
         alpha, beta, theta1, theta2 = params
         w = self.almon_weights(theta1, theta2)
         n = len(self.x)
         preds = []
-        # Pour chaque observation à partir de l'indice K (afin d'avoir K lags)
         for t in range(self.K, n):
-            # Récupération des valeurs x[t], x[t-1], ..., x[t-K]
             x_lags = self.x.iloc[t - self.K:t + 1].values[::-1]
-            pred_t = alpha + beta * np.dot(w, x_lags)
-            preds.append(pred_t)
+            preds.append(alpha + beta * np.dot(w, x_lags))
         return np.array(preds)
 
     def objective(self, params):
-        """
-        Fonction objectif : différence entre les y observés et les y prédits.
-        """
-        y_trim = self.y.iloc[self.K:].values  # on ne peut prédire qu'à partir de l'observation K
+        y_obs = self.y.iloc[self.K:].values
         pred = self.midas_prediction(params)
-        return pred - y_trim
+        return pred - y_obs
 
     def fit(self, initial_guess=None):
-        """
-        Estime les paramètres du modèle MIDAS en minimisant la somme des carrés des erreurs.
-
-        Paramètres
-        ----------
-        initial_guess : list ou array-like, optionnel
-            Estimation initiale pour [alpha, beta, theta1, theta2]. Par défaut : [0, 0.1, 0, 0].
-
-        Retourne
-        --------
-        params : dict
-            Dictionnaire contenant les paramètres estimés.
-        """
         if initial_guess is None:
             initial_guess = [0, 0.1, 0, 0]
         result = least_squares(self.objective, initial_guess)
@@ -107,33 +67,45 @@ class MIDASModel:
         return self.params
 
     def predict(self):
-        """
-        Retourne les prédictions du modèle MIDAS à partir des paramètres estimés.
-        """
         if self.params is None:
             raise Exception("Le modèle n'a pas encore été ajusté. Utilisez la méthode fit() d'abord.")
-        param_vector = [self.params['alpha'], self.params['beta'], self.params['theta1'], self.params['theta2']]
+        param_vector = [self.params['alpha'], self.params['beta'],
+                        self.params['theta1'], self.params['theta2']]
         return self.midas_prediction(param_vector)
 
     def plot_fit(self):
-        """
-        Trace les observations (y) et les prédictions du modèle MIDAS.
-        Le titre du graphique intègre le nom du secteur et de la variable macro utilisée.
-        """
         if self.params is None:
             raise Exception("Le modèle n'a pas encore été ajusté. Utilisez la méthode fit() d'abord.")
         y_obs = self.y.iloc[self.K:]
         y_pred = self.predict()
+
+        # Création de la figure avec deux axes y
         fig = go.Figure()
+        # Tracé de la série observée (rendement du secteur)
         fig.add_trace(go.Scatter(x=y_obs.index, y=y_obs.values,
-                                 mode='lines', name='Observé'))
+                                 mode='lines', name='Observé (Secteur)'))
+        # Tracé de la série prédite
         fig.add_trace(go.Scatter(x=y_obs.index, y=y_pred,
-                                 mode='lines', name='Prédit'))
+                                 mode='lines', name='Prédit (Secteur)'))
+        # Tracé de l'évolution de la variable macro (sur un axe secondaire)
+        fig.add_trace(go.Scatter(x=self.x.index, y=self.x.values,
+                                 mode='lines', name=f"{self.macro_name} (Macro)",
+                                 yaxis="y2"))
+
+        # Mise en forme du layout avec un axe secondaire
         fig.update_layout(
-            title=f"Ajustement du modèle MIDAS<br>Secteur : {self.sector_name} | Variable macro : {self.macro_name}",
+            title=f"Ajustement MIDAS<br>Secteur: {self.sector_name} | Macro: {self.macro_name}",
             xaxis_title="Date",
-            yaxis_title="y",
-            legend_title="Légende",
+            yaxis=dict(
+                title="Rendement du secteur",
+                showgrid=False,
+                zeroline=False
+            ),
+            yaxis2=dict(
+                title=self.macro_name,
+                overlaying='y',
+                side='right'
+            ),
             hovermode="x"
         )
         fig.show()
