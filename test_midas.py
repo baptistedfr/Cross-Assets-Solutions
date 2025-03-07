@@ -1,5 +1,6 @@
 from Midas.midas import MIDASModel, MultiMIDASModel
 import pandas as pd
+import plotly.graph_objects as go
 
 # Exemple d'utilisation
 # if __name__ == "__main__":
@@ -89,4 +90,28 @@ if __name__ == "__main__":
             print(f"Secteur: {sect} | Macro: {macro_name} | Paramètres: {params_estimes}")
 
             # Visualisation de l'ajustement
-            midas_model.plot_fit()
+            # midas_model.plot_fit()
+
+            # Calcul du bêta sur l'ensemble de la période
+            beta_global = aligned_sector.cov(aligned_macro) / aligned_macro.var()
+            print("Beta global:", beta_global)
+
+            window = 6
+            beta_rolling = aligned_sector.rolling(window=window).cov(aligned_macro) / aligned_macro.rolling(
+                window=window).var()
+
+            # Tracé du beta rolling avec Plotly
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=beta_rolling.index,
+                y=beta_rolling.values,
+                mode='lines',
+                name=f'Beta Rolling (window={window}), {sect} vs {macro_name}'
+            ))
+            fig.update_layout(
+                title=f'Beta Rolling (Fenêtre de {window} périodes), {sect} vs {macro_name}',
+                xaxis_title='Date',
+                yaxis_title='Beta',
+                hovermode='x'
+            )
+            fig.show()
