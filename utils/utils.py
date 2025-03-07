@@ -15,13 +15,15 @@ class MacroSensitivities:
         """
         stress = 1  # niveau par défaut "très accommodant"
 
-        if row['Refi Rate'] > row['Refi Rate_ema']:
-            stress = 4
+        # if row['Refi Rate'] > row['Refi Rate_ema']:
+        #     stress = 4
 
         if float(row['CPI']) > float(row['CPI_ema']):
             stress = 2
-            if float(row['10Y Yield']) > float(row['10Y Yield_ema']):
+            if row['Refi Rate'] > row['Refi Rate_ema']:
                 stress = 4
+            # if float(row['10Y Yield']) > float(row['10Y Yield_ema']):
+            #     stress = 4
         else:
             stress = 2
 

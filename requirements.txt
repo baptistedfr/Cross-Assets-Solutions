@@ -2,3 +2,4 @@ yfinance
 pandas
 openpyxl
 plotly
+scipy
