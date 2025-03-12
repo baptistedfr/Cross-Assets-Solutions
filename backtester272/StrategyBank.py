@@ -65,7 +65,13 @@ class MinVarianceStrategy(OptimizationStrategy):
         #portfolio_variance = np.dot(weights.T, np.dot(cov_matrix, weights))
         portfolio_variance = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)) * 252)
 
-        return portfolio_variance
+        # Terme de régularisation Ridge (si max_turnover est défini)
+        if self.max_turnover is not None and hasattr(self, "current_position") and np.sum(np.abs(self.current_position)) > 0:
+            ridge_penalty = self.lmd_ridge * np.sum((weights - self.current_position) ** 2)  # L2 penalty
+        else:
+            ridge_penalty = 0
+
+        return portfolio_variance + ridge_penalty
     
 class MaxSharpeStrategy(OptimizationStrategy):
     """
@@ -87,8 +93,14 @@ class MaxSharpeStrategy(OptimizationStrategy):
         portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)) * 252)
         sharpe_ratio = (portfolio_return - self.risk_free_rate) / portfolio_volatility
 
-        # Maximiser Sharpe => Minimiser son opposé
-        return -sharpe_ratio
+        # Terme de régularisation Ridge (si max_turnover est défini)
+        if self.max_turnover is not None and hasattr(self, "current_position") and np.sum(np.abs(self.current_position)) > 0:
+            ridge_penalty = self.lmd_ridge * np.sum((weights - self.current_position) ** 2)  # L2 penalty
+        else:
+            ridge_penalty = 0
+
+        # Maximiser Sharpe => Minimiser son opposé + pénalité
+        return -sharpe_ratio + ridge_penalty
 
 class EqualRiskContributionStrategy(OptimizationStrategy):
     """
@@ -143,7 +155,14 @@ class EqualRiskContributionStrategy(OptimizationStrategy):
         # risk_objective = _minimize_risk_concentration(weights, cov_matrix) # ou "np.sum((risk_contributions - 1 / num_assets)**2)" Les deux fonctionnent, mais différement, j'ai du mal à cerner si l'une est meilleure que l'autre.
         return_value_objective = -self.lmd_mu * weights.T @ expected_returns
         variance_objective = self.lmd_var * weights.T @ cov_matrix @ weights
-        return risk_objective + return_value_objective + variance_objective
+
+        # Terme de régularisation Ridge (si max_turnover est défini)
+        if self.max_turnover is not None and hasattr(self, "current_position") and np.sum(np.abs(self.current_position)) > 0:
+            ridge_penalty = self.lmd_ridge * np.sum((weights - self.current_position) ** 2)  # L2 penalty
+        else:
+            ridge_penalty = 0
+
+        return risk_objective + return_value_objective + variance_objective + ridge_penalty
     
 class ValueStrategy(RankedStrategy):
     """

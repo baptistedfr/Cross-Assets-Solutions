@@ -57,7 +57,9 @@ class OptimizationStrategy(Strategy):
     d'une fonction objectif, avec des contraintes sur les poids des actifs.
     """
     def __init__(self, max_weight: float = 1.0, min_weight: float = 0.0,
-                 risk_free_rate: float = 0.02, total_exposure: float = 1.0, max_turnover: float = None, max_tracking_error: float = None) -> None:
+                 risk_free_rate: float = 0.02, total_exposure: float = 1.0, 
+                 max_turnover: float = None, max_tracking_error: float = None, 
+                 lmd_ridge: float = 0.0) -> None:
         """
         Initialise la stratégie d'optimisation avec des paramètres spécifiques.
 
@@ -74,6 +76,7 @@ class OptimizationStrategy(Strategy):
         self.total_exposure = total_exposure
         self.max_turnover = max_turnover
         self.max_tracking_error = max_tracking_error
+        self.lmd_ridge = lmd_ridge
 
     @filter_with_signals
     def get_position(self, historical_data: pd.DataFrame, current_position: pd.Series, benchmark_position: pd.Series = None) -> pd.Series:
@@ -108,6 +111,9 @@ class OptimizationStrategy(Strategy):
 
         # Crée les contraintes du portefeuille
         portfolio_constraints = self.create_portfolio_constraints(current_position, cov_matrix, benchmark_position)
+
+        # On introduit les poids du portefeuille dans l'objet pour les utiliser dans la fonction objectif
+        self.current_position = current_position
 
         # Définir les bornes pour les poids (entre 0 et 1 par actif)
         bounds = tuple((0, 1) for _ in range(returns.shape[1]))

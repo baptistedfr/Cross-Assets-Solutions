@@ -240,8 +240,12 @@ class Result:
         # Performance (prend deux lignes)
         ax_perf = fig.add_subplot(gs[0:2, :])
         sns.set(style="whitegrid")
-        for perf, name in zip(performances, names):
-            ax_perf.plot(perf.index, perf, label=name, linewidth=2)
+        for perf, name in zip(performances[::-1], names[::-1]):
+            if name == 'Benchmark':
+                ax_perf.plot(perf.index, perf, label=name, color='black', linewidth=2, linestyle='--')
+            else:
+                ax_perf.plot(perf.index, perf, label=name, linewidth=2)
+                
         ax_perf.set_title("Performance des stratégies", fontsize=16)
         ax_perf.set_ylabel("Valeur")
         ax_perf.legend(loc="upper left", fontsize=10)
@@ -254,7 +258,8 @@ class Result:
             # Tracking Error
             ax_te = fig.add_subplot(gs[2:4, :])
             for perf, name in zip(performances[1:], names[1:]):
-                te = (perf - performances[0]).dropna()
+                te = (perf.pct_change() - performances[0].pct_change()).dropna()
+                te = (1 + te).cumprod() - 1
                 ax_te.plot(te.index, te, label=name, linewidth=2)
             ax_te.set_title("Performance rapport au Benchmark", fontsize=16)
             ax_te.set_ylabel("Écart de performance")
