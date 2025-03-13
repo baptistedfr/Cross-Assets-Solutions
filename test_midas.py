@@ -45,13 +45,11 @@ if __name__ == "__main__":
     refi_rate = pd.read_csv("data_macro/refinancing_rate.csv", index_col=0, parse_dates=True)
     cpi = pd.read_csv("data_macro/cpi.csv", index_col=0, parse_dates=True)
     zew = pd.read_excel("data_macro/A REQUEST.xlsx", index_col=0, sheet_name="GRZECURR Index")
-    # ten_year_yield = pd.read_excel("data_macro/A REQUEST.xlsx", index_col=0, sheet_name="GDBR10 Index")
     unemployment = pd.read_excel("data_macro/A REQUEST.xlsx", index_col=0, sheet_name="UMRTEMU  Index")
     savings_rate = pd.read_excel("data_macro/A REQUEST.xlsx", index_col=0, sheet_name="EUESEMU Index")
 
     # Préparation des variables macro
     taux10y = ten_year_yield["rate"]
-    # taux10y = ten_year_yield.astype(float)["value"]
     refi_series = refi_rate["ECBDFR"].dropna()
     refi_series = refi_series.resample("M").last()
     cpi_rate = cpi["TACECO/CPIYOY/EUZ"].dropna()
@@ -70,48 +68,43 @@ if __name__ == "__main__":
     }
 
     # Pour chaque variable macro et pour chaque secteur, ajuster un modèle MIDAS
+    # Dictionary to store beta values for each macro variable.
+    all_betas = {}
+
     for macro_name, macro_series in macro_vars.items():
-        print(f"\n--- Test du modèle MIDAS pour la variable macro : {macro_name} ---")
+        print(f"\n--- Testing the MIDAS model for macro variable: {macro_name} ---")
+
+        # Create an empty dictionary to collect beta values for each sector for this macro variable.
+        beta_dict = {}
+
         for sect in data.columns:
             secteur = data[sect]
             rendement_secteur = secteur.pct_change().dropna()
 
-            # Aligner les dates entre le rendement du secteur et la variable macro
+            # Align the dates between the sector return and the macro variable
             aligned_sector, aligned_macro = rendement_secteur.align(macro_series, join="inner", axis=0)
             if aligned_sector.empty or aligned_macro.empty:
-                print(f"Pas de données alignées pour le secteur {sect} avec {macro_name}.")
+                print(f"No aligned data for sector {sect} with macro variable {macro_name}.")
                 continue
 
             aligned_sector.name = sect
             aligned_macro.name = macro_name
 
+
+            # Create and fit the MIDAS model (assuming MIDASModel is already defined)
             midas_model = MIDASModel(aligned_sector, aligned_macro, K=12)
             params_estimes = midas_model.fit()
-            print(f"Secteur: {sect} | Macro: {macro_name} | Paramètres: {params_estimes}")
+            print(f"Sector: {sect} | Macro: {macro_name} | Estimated parameters: {params_estimes}")
 
-            # Visualisation de l'ajustement
+            # plot the fit
             # midas_model.plot_fit()
 
-            # Calcul du bêta sur l'ensemble de la période
-            beta_global = aligned_sector.cov(aligned_macro) / aligned_macro.var()
-            print("Beta global:", beta_global)
+            # Extract the beta estimate from the MIDAS model parameters.
+            beta_sect = params_estimes['beta']
+            beta_dict[sect] = beta_sect
 
-            window = 6
-            beta_rolling = aligned_sector.rolling(window=window).cov(aligned_macro) / aligned_macro.rolling(
-                window=window).var()
+        beta_df = pd.DataFrame.from_dict(beta_dict, orient="index", columns=["Beta"])
+        all_betas[macro_name] = beta_df
+        all_betas[macro_name].to_csv(f"results/betas_{macro_name}.csv")
 
-            # Tracé du beta rolling avec Plotly
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=beta_rolling.index,
-                y=beta_rolling.values,
-                mode='lines',
-                name=f'Beta Rolling (window={window}), {sect} vs {macro_name}'
-            ))
-            fig.update_layout(
-                title=f'Beta Rolling (Fenêtre de {window} périodes), {sect} vs {macro_name}',
-                xaxis_title='Date',
-                yaxis_title='Beta',
-                hovermode='x'
-            )
-            fig.show()
+
