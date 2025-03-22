@@ -342,9 +342,9 @@ class Backtester:
         # Assigner les poids calculés à l'attribut de la classe
         return optimal_weights_df.fillna(0.0)
 
-    def calculate_performance(self, weights: pd.Series) -> None:
+    def calculate_performance(self, weights: pd.Series) -> pd.Series:
         """
-        Calcule la performance du portefeuille en utilisant les poids calculés.
+        Calcule la performance du portefeuille en utilisant les poids calculés et en tenant compte du drift des poids en l'absence de rebalancement.
         """
         
         # Initialiser le solde du portefeuille avec les actifs sous gestion (AUM)
@@ -371,36 +371,41 @@ class Backtester:
         date_range = returns.loc[first_valid_date:].index
 
         for date in date_range:
-            # Mettre à jour les poids si de nouveaux poids sont disponibles
-            if date in weights.index:
-                current_weights = weights.loc[date]
+            daily_returns = returns.loc[date]
 
-                # Calculer les changements dans les positions
+            if date in weights.index:
+                # Jour de rebalancement : on applique les poids cibles
+                current_weights = weights.loc[date]
+                
+                # Calculer les changements de positions
                 changes = (current_weights - previous_weights) * balance
 
                 # Calculer les coûts de transaction
                 transaction_costs = changes.abs().sum() * (self.transaction_cost / 100)
 
-                # Mettre à jour les coûts totaux de transaction et réduire le solde
+                # Mettre à jour les coûts totaux et réduire le solde
                 self.total_transaction_costs += transaction_costs
                 balance -= transaction_costs
-
-                # Mettre à jour les poids précédents
-                previous_weights = current_weights.copy()
             else:
+                # Pas de rebalancement : on conserve les poids de la veille
                 current_weights = previous_weights.copy()
 
             # Calculer le rendement du portefeuille pour la journée
-            portfolio_return = (current_weights * returns.loc[date]).sum()
+            portfolio_return = (current_weights * daily_returns).sum()
 
-            # Mettre à jour le solde
+            # Mettre à jour le solde du portefeuille
             balance *= (1 + portfolio_return)
+
+            # Actualiser les poids pour refléter le drift dû aux rendements journaliers
+            # Chaque actif évolue selon son rendement, ce qui modifie la composition relative
+            drifted_weights = (current_weights * (1 + daily_returns)) / (1 + portfolio_return)
+            previous_weights = drifted_weights.copy()
 
             # Enregistrer la valeur du portefeuille et la date
             portfolio_values.append(balance)
             dates.append(date)
 
-        # Créer une Series pour la performance du portefeuille
+        # Retourner la performance sous forme de Series
         return pd.Series(portfolio_values, index=dates)
 
     def get_benchmark_weights(self, date: pd.Timestamp) -> pd.Series:
