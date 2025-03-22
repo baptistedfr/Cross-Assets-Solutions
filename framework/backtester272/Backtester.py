@@ -93,6 +93,9 @@ class Backtester:
             
             self.dates_universe = dates_universe
 
+            # Gestion des données manquantes, calcul des poids et performance
+            self.handle_missing_data()
+
     def run(self, 
             start_date: Optional[pd.Timestamp] = None, 
             end_date: Optional[pd.Timestamp] = None, 
@@ -148,9 +151,6 @@ class Backtester:
         self.window_tactical = window_tactical
         self.aum = aum
         self.transaction_cost = transaction_cost
-
-        # Gestion des données manquantes, calcul des poids et performance
-        self.handle_missing_data()
 
         # Exécution de la strategie
         self.weights = self.calculate_weights(strategy)
@@ -319,7 +319,7 @@ class Backtester:
             # Calculer les nouveaux poids en fonction de la stratégie
             if isinstance(strategy, Strategy):
                 if self.benchmark_weights is not None:
-                    benchmark_weights = self.get_benchmark_weights(current_date)
+                    benchmark_weights = self.get_drifted_weights(current_date, self.benchmark_weights)
                     final_optimal_weights = strategy.get_position(price_window_filtered, last_weights, benchmark_weights)
                 else:
                     final_optimal_weights = strategy.get_position(price_window_filtered, last_weights)
@@ -327,7 +327,8 @@ class Backtester:
 
             elif isinstance(strategy, Tactical):
                 try:
-                    actual_weights = self.get_benchmark_weights(current_date) if tactical_bench else self.get_strategy_weights(current_date)
+                    used_weights = self.benchmark_weights if tactical_bench else self.weights
+                    actual_weights = self.get_drifted_weights(current_date, used_weights)
                 except:
                     actual_weights = pd.Series(0.0, index=prices.columns)
                 final_optimal_weights = strategy.get_position(price_window_filtered, actual_weights)
@@ -408,56 +409,60 @@ class Backtester:
         # Retourner la performance sous forme de Series
         return pd.Series(portfolio_values, index=dates)
 
-    def get_benchmark_weights(self, date: pd.Timestamp) -> pd.Series:
+    def get_drifted_weights(self, date: pd.Timestamp, weights: pd.Series) -> pd.Series:
         """
-        Retourne les poids du benchmark pour une date donnée, en utilisant les poids les plus récents disponibles si la date exacte n'est pas présente.
-
-        Args:
-            date (pd.Timestamp): Date pour laquelle obtenir les poids.
-
-        Returns:
-            pd.Series: Poids du benchmark pour la date donnée.
+        Retourne les poids driftés pour une date donnée.
+        Si la date n'est pas directement présente, on utilise la dernière date de poids disponible 
+        et on calcule le drift jour par jour jusqu'à la date demandée.
         """
-        if self.benchmark_weights is None:
-            raise ValueError("Aucun poids de benchmark n'a été fourni.")
-
-        if not isinstance(date, pd.Timestamp):
-            date = pd.to_datetime(date)
-
-        if date in self.benchmark_weights.index:
-            return self.benchmark_weights.loc[date]
-        else:
-            valid_dates = self.benchmark_weights.index[self.benchmark_weights.index <= date]
-            if valid_dates.empty:
-                raise ValueError(f"Pas de poids de benchmark disponibles pour la date {date}.")
-            closest_date = valid_dates.max()
-            return self.benchmark_weights.loc[closest_date]
-
-    def get_strategy_weights(self, date: pd.Timestamp) -> pd.Series:
-        """
-        Retourne les poids de la stratégie pour une date donnée, en utilisant les poids les plus récents disponibles si la date exacte n'est pas présente.
-
-        Args:
-            date (pd.Timestamp): Date pour laquelle obtenir les poids.
-
-        Returns:
-            pd.Series: Poids de la stratégie pour la date donnée.
-        """
-        if self.weights is None:
+        if weights is None:
             raise ValueError("Aucun poids de stratégie n'a été fourni.")
 
         if not isinstance(date, pd.Timestamp):
             date = pd.to_datetime(date)
 
-        if date in self.weights.index:
-            return self.weights.loc[date]
+        # Récupérer la dernière date de poids disponible inférieure ou égale à la date demandée
+        if date in weights.index:
+            base_date = date
+            base_weights = weights.loc[date]
         else:
-            valid_dates = self.weights.index[self.weights.index <= date]
+            valid_dates = weights.index[weights.index <= date]
             if valid_dates.empty:
                 raise ValueError(f"Pas de poids de stratégie disponibles pour la date {date}.")
-            closest_date = valid_dates.max()
-            return self.weights.loc[closest_date]
+            base_date = valid_dates.max()
+            base_weights = weights.loc[base_date]
+
+        # Si la date demandée correspond à la date de base, retourner directement les poids
+        if base_date == date:
+            return base_weights
+
+        # Extraire les données de prix entre la date de base et la date demandée
+        price_df = self.data.loc[base_date:date]
         
+        # Vérifier que le DataFrame n'est pas vide
+        if price_df.empty:
+            return base_weights
+
+        # Si la date de base n'est pas exactement présente, on ajuste la date de base
+        if price_df.index[0] != base_date:
+            # Ici, on choisit de prendre le premier jour disponible dans les données de prix comme nouvelle base.
+            base_date = price_df.index[0]
+            # Vous pouvez également logguer un avertissement pour signaler ce changement.
+        
+        # Calcul des rendements journaliers à partir des prix
+        returns = price_df.pct_change().dropna()
+
+        # Initialiser les poids courants avec les poids de base
+        current_weights = base_weights.copy()
+
+        # Appliquer le drift jour par jour
+        for day in returns.index:
+            r = returns.loc[day]
+            portfolio_return = (current_weights * r).sum()
+            current_weights = (current_weights * (1 + r)) / (1 + portfolio_return)
+
+        return current_weights
+            
 
     def rebase_performances(self, *performances: pd.Series) -> list:
         """

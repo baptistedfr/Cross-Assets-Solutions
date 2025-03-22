@@ -62,7 +62,6 @@ class BlackLittermanTactical(Tactical):
 
         if current_position.abs().sum() == 0:
             return current_position
-
         # Récupération des vues spécifiques à la stratégie
         view_position = self.get_views(historical_data, current_position)
         # Combinaison linéaire entre la position d'équilibre et la position basée sur les vues
