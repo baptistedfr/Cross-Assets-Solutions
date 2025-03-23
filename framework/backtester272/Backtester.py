@@ -4,6 +4,7 @@ from typing import List, Tuple, Optional, Dict, Union
 from backtester272.Result import Result
 from backtester272.Strategy import Strategy
 from backtester272.Tactical import Tactical
+from backtester272.MacroStrat import MacroTactical
  
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -103,9 +104,11 @@ class Backtester:
             window: int = 365,
             freq_tactical: int = 30,
             window_tactical: int = 365, 
+            freq_macro: int = 30,
             aum: float = 100, 
             transaction_cost: float = 0.0, 
             strategy: Strategy = None,
+            macro: MacroTactical = None,
             tactical: Tactical = None) -> Result:
         """
         Exécute le backtest sur la période spécifiée avec les paramètres donnés.
@@ -149,6 +152,7 @@ class Backtester:
         self.window = window
         self.freq_tactical = freq_tactical
         self.window_tactical = window_tactical
+        self.freq_macro = freq_macro
         self.aum = aum
         self.transaction_cost = transaction_cost
 
@@ -157,6 +161,24 @@ class Backtester:
 
         self.performance = self.calculate_performance(self.weights)
         total_transaction_costs = self.total_transaction_costs
+
+        if macro is not None:
+            self.macro_weights = self.calculate_weights(macro, relative_weights=self.weights)
+            result_macro_weights = self.macro_weights.loc[self.start_date:self.end_date].loc[self.weights.index[1]:]
+            self.macro_performance = self.calculate_performance(result_macro_weights)
+
+            if tactical is not None:
+                self.tactical_macro_weights = self.calculate_weights(tactical, relative_weights=self.macro_weights)
+                result_tactical_macro_weights = self.tactical_macro_weights.loc[self.start_date:self.end_date].loc[self.weights.index[1]:]
+                self.tactical_macro_performance = self.calculate_performance(result_tactical_macro_weights)
+            else:
+                self.tactical_macro_performance = None
+                result_tactical_macro_weights = None
+        else:
+            self.macro_performance = None
+            result_macro_weights = None
+            self.tactical_macro_performance = None
+            result_tactical_macro_weights = None
 
         # Exécution de la tactique si disponible
         if tactical is not None:
@@ -171,8 +193,26 @@ class Backtester:
             result_benchmark_weights = self.benchmark_weights.loc[self.start_date:self.end_date].loc[self.weights.index[1]:]
             self.benchmark = self.calculate_performance(result_benchmark_weights)
 
+            if macro is not None:
+                self.macro_benchmark_weights = self.calculate_weights(macro, relative_weights=self.benchmark_weights)
+                result_macro_benchmark_weights = self.macro_benchmark_weights.loc[self.start_date:self.end_date].loc[self.weights.index[1]:]
+                self.macro_benchmark = self.calculate_performance(result_macro_benchmark_weights)
+
+                if tactical is not None:
+                    self.tactical_macro_benchmark_weights = self.calculate_weights(tactical, relative_weights=self.macro_benchmark_weights)
+                    result_tactical_macro_benchmark_weights = self.tactical_macro_benchmark_weights.loc[self.start_date:self.end_date].loc[self.weights.index[1]:]
+                    self.tactical_macro_benchmark = self.calculate_performance(result_tactical_macro_benchmark_weights)
+                else:
+                    self.tactical_macro_benchmark = None
+                    result_tactical_macro_benchmark_weights = None
+            else:
+                self.macro_benchmark = None
+                result_macro_benchmark_weights = None
+                self.tactical_macro_benchmark = None
+                result_tactical_macro_benchmark_weights = None
+
             if tactical is not None:
-                self.benchmark_tactical_weights = self.calculate_weights(tactical, True, relative_weights=self.benchmark_weights)
+                self.benchmark_tactical_weights = self.calculate_weights(tactical, relative_weights=self.benchmark_weights)
                 result_tactical_benchmark_weights = self.benchmark_tactical_weights.loc[self.start_date:self.end_date].loc[self.weights.index[1]:]
                 self.tactical_benchmark = self.calculate_performance(result_tactical_benchmark_weights)
             else:
@@ -181,10 +221,14 @@ class Backtester:
         else:
             self.benchmark = None
             self.tactical_benchmark = None
+            self.macro_benchmark = None
+            self.tactical_macro_benchmark = None
             result_benchmark_weights = None
             result_tactical_benchmark_weights = None
+            result_macro_benchmark_weights = None
+            result_tactical_macro_benchmark_weights = None
         
-        self.performance, self.benchmark, self.tactical_performance, self.tactical_benchmark = self.rebase_performances(self.performance, self.benchmark, self.tactical_performance, self.tactical_benchmark)
+        self.performance, self.benchmark, self.tactical_performance, self.tactical_benchmark, self.macro_performance, self.macro_benchmark, self.tactical_macro_performance, self.tactical_macro_benchmark = self.rebase_performances(self.performance, self.benchmark, self.tactical_performance, self.tactical_benchmark, self.macro_performance, self.macro_benchmark, self.tactical_macro_performance, self.tactical_macro_benchmark)
 
         # Nommer la stratégie si elle n'est pas déjà nommée
         if not hasattr(strategy, 'name'):
@@ -199,7 +243,16 @@ class Backtester:
                       self.tactical_performance,
                       result_tactical_weights,
                       self.tactical_benchmark,
-                      result_tactical_benchmark_weights)
+                      result_tactical_benchmark_weights,
+                      self.macro_performance,
+                      result_macro_weights,
+                      self.macro_benchmark,
+                      result_macro_benchmark_weights,
+                      self.tactical_macro_performance,
+                      result_tactical_macro_weights,
+                      self.tactical_macro_benchmark,
+                      result_tactical_macro_benchmark_weights)
+    
 
 
     def handle_missing_data(self) -> None:
@@ -218,7 +271,7 @@ class Backtester:
         if self.data.empty:
             raise ValueError("Aucune donnée disponible après le traitement des valeurs manquantes.")
 
-    def calculate_weights(self, strategy: Union[Strategy, Tactical], tactical_bench: bool = False, relative_weights: pd.DataFrame = None) -> None:
+    def calculate_weights(self, strategy: Union[Strategy, Tactical], relative_weights: pd.DataFrame = None) -> None:
         """
         Calcule les poids optimaux pour chaque date de rééquilibrage en fonction de la stratégie.
 
@@ -233,6 +286,9 @@ class Backtester:
         elif isinstance(strategy, Tactical):
             freq_dt = pd.DateOffset(days=self.freq_tactical)
             window_dt = pd.DateOffset(days=self.window_tactical)
+        elif isinstance(strategy, MacroTactical):
+            freq_dt = pd.DateOffset(days=self.freq_macro)
+            window_dt = pd.DateOffset(days=self.window)
 
         # Calculer la date de début en tenant compte de la fenêtre
         start_date_with_window = pd.to_datetime(self.start_date) - window_dt
@@ -327,11 +383,17 @@ class Backtester:
 
             elif isinstance(strategy, Tactical):
                 try:
-                    used_weights = self.benchmark_weights if tactical_bench else self.weights
-                    actual_weights = self.get_drifted_weights(current_date, used_weights)
+                    actual_weights = self.get_drifted_weights(current_date, relative_weights)
                 except:
                     actual_weights = pd.Series(0.0, index=prices.columns)
                 final_optimal_weights = strategy.get_position(price_window_filtered, actual_weights)
+
+            elif isinstance(strategy, MacroTactical):
+                try:
+                    actual_weights = self.get_drifted_weights(current_date, relative_weights)
+                except:
+                    actual_weights = pd.Series(0.0, index=prices.columns)
+                final_optimal_weights = strategy.get_position(current_date, actual_weights)
 
             # Enregistrer les poids et la date
             weights_list.append(final_optimal_weights)

@@ -26,7 +26,15 @@ class Result:
                  tactical_performance: pd.Series = None,
                  tactical_weight: pd.DataFrame = None,
                  tactical_benchmark: pd.Series = None,
-                 tactical_benchmark_weight: pd.DataFrame = None
+                 tactical_benchmark_weight: pd.DataFrame = None,
+                 macro_performance: pd.Series = None,
+                 macro_performance_weight: pd.DataFrame = None,
+                 macro_benchmark: pd.Series = None,
+                 macro_benchmark_weight: pd.DataFrame = None,
+                 tactical_macro_performance: pd.Series = None,
+                 tactical_macro_performance_weight: pd.DataFrame = None,
+                 tactical_macro_benchmark: pd.Series = None,
+                 tactical_macro_benchmark_weight: pd.DataFrame = None
                  ):
         """
         Initialise les résultats du backtest.
@@ -48,6 +56,14 @@ class Result:
         self.tactical_weight = tactical_weight
         self.tactical_benchmark = tactical_benchmark
         self.tactical_benchmark_weight = tactical_benchmark_weight
+        self.macro_performance = macro_performance
+        self.macro_performance_weight = macro_performance_weight
+        self.macro_benchmark = macro_benchmark
+        self.macro_benchmark_weight = macro_benchmark_weight
+        self.tactical_macro_performance = tactical_macro_performance
+        self.tactical_macro_performance_weight = tactical_macro_performance_weight
+        self.tactical_macro_benchmark = tactical_macro_benchmark
+        self.tactical_macro_benchmark_weight = tactical_macro_benchmark_weight
 
     def periods_freq(self, series: pd.Series) -> int:
         """
@@ -274,7 +290,80 @@ class Result:
             # Rajoute la métrique de tracking error
             metrics[0]['Tracking Error'] = self.calculate_tracking_error(self.benchmark)
 
+    def compare(self, *other_results: 'Result') -> None:
+        """
+        Compare les résultats de plusieurs stratégies avec des graphiques et un tableau de métriques.
 
+        Args:
+            *other_results (Result): Autres résultats de backtest à comparer.
+        """
+        results = [self] + list(other_results)
+
+        # Préparation des données
+
+        # On ajoute d'abord les benchmarks classiques, tactiques, macro et tactiques macro s'ils existent.
+        performances = (
+            ([self.benchmark] if self.benchmark is not None else [])
+            + ([self.tactical_benchmark] if self.tactical_benchmark is not None else [])
+            + ([self.macro_benchmark] if self.macro_benchmark is not None else [])
+            + ([self.tactical_macro_benchmark] if self.tactical_macro_benchmark is not None else [])
+            # Ensuite, pour chaque résultat, on ajoute les performances classiques,
+            # tactiques, macro et tactiques macro s'ils sont disponibles.
+            + [result.performance for result in results]
+            + [result.tactical_performance for result in results if result.tactical_performance is not None]
+            + [result.macro_performance for result in results if hasattr(result, 'macro_performance') and result.macro_performance is not None]
+            + [result.tactical_macro_performance for result in results if hasattr(result, 'tactical_macro_performance') and result.tactical_macro_performance is not None]
+        )
+        
+        metrics = (
+            ([self.get_metrics(performance=self.benchmark)] if self.benchmark is not None else [])
+            + ([self.get_metrics(performance=self.tactical_benchmark, benchmark=self.benchmark)] if self.tactical_benchmark is not None else [])
+            + ([self.get_metrics(performance=self.macro_benchmark, benchmark=self.benchmark)] if self.macro_benchmark is not None else [])
+            + ([self.get_metrics(performance=self.tactical_macro_benchmark, benchmark=self.benchmark)] if self.tactical_macro_benchmark is not None else [])
+            + [result.get_metrics(benchmark=self.benchmark) for result in results]
+            + [result.get_metrics(performance=result.tactical_performance, benchmark=self.benchmark) for result in results if result.tactical_performance is not None]
+            + [result.get_metrics(benchmark=self.macro_benchmark) for result in results if hasattr(result, 'macro_benchmark') and result.macro_benchmark is not None]
+            + [result.get_metrics(performance=result.tactical_macro_performance, benchmark=self.benchmark) for result in results if hasattr(result, 'tactical_macro_benchmark') and result.tactical_macro_benchmark is not None]
+        )
+        
+        drawdowns = (
+            ([self.calculate_drawdown(self.benchmark)] if self.benchmark is not None else [])
+            + ([self.calculate_drawdown(self.tactical_benchmark)] if self.tactical_benchmark is not None else [])
+            + ([self.calculate_drawdown(self.macro_benchmark)] if self.macro_benchmark is not None else [])
+            + ([self.calculate_drawdown(self.tactical_macro_benchmark)] if self.tactical_macro_benchmark is not None else [])
+            + [result.calculate_drawdown() for result in results]
+            + [result.calculate_drawdown(result.tactical_performance) for result in results if result.tactical_performance is not None]
+            + [result.calculate_drawdown(result.macro_performance) for result in results if hasattr(result, 'macro_performance') and result.macro_performance is not None]
+            + [result.calculate_drawdown(result.tactical_macro_performance) for result in results if hasattr(result, 'tactical_macro_performance') and result.tactical_macro_performance is not None]
+        )
+
+        returns = (
+            ([self.benchmark.pct_change().dropna()] if self.benchmark is not None else [])
+            + ([self.tactical_benchmark.pct_change().dropna()] if self.tactical_benchmark is not None else [])
+            + ([self.macro_benchmark.pct_change().dropna()] if self.macro_benchmark is not None else [])
+            + ([self.tactical_macro_benchmark.pct_change().dropna()] if self.tactical_macro_benchmark is not None else [])
+            + [result.performance.pct_change().dropna() for result in results]
+            + [result.tactical_performance.pct_change().dropna() for result in results if result.tactical_performance is not None]
+            + [result.macro_performance.pct_change().dropna() for result in results if hasattr(result, 'macro_performance') and result.macro_performance is not None]
+            + [result.tactical_macro_performance.pct_change().dropna() for result in results if hasattr(result, 'tactical_macro_performance') and result.tactical_macro_performance is not None]
+        )
+
+        names = (
+            (['Benchmark'] if self.benchmark is not None else [])
+            + (['Tactical Benchmark'] if self.tactical_benchmark is not None else [])
+            + (['Macro Benchmark'] if self.macro_benchmark is not None else [])
+            + (['Tactical Macro Benchmark'] if self.tactical_macro_benchmark is not None else [])
+            + [result.name for result in results]
+            + [result.name + " Tactical" for result in results if result.tactical_performance is not None]
+            + [result.name + " Macro" for result in results if hasattr(result, 'macro_performance') and result.macro_performance is not None]
+            + [result.name + " Tactical Macro" for result in results if hasattr(result, 'tactical_macro_performance') and result.tactical_macro_performance is not None]
+        )
+
+        if self.benchmark is not None:
+            # Rajoute la métrique de tracking error pour le benchmark classique
+            metrics[0]['Tracking Error'] = self.calculate_tracking_error(self.benchmark)
+        
+        # Suite du code pour afficher ou analyser les graphiques et tableaux comparatifs...
 
         # Calcul des rendements annuels (EOY Returns)
         eoy_returns = []

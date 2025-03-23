@@ -20,9 +20,9 @@ class DataMacro:
         refi_rate_path = os.path.join(self.base_path, refi_rate_file)
         yield_10Y_path = os.path.join(self.base_path, yield_10Y_file)
 
-        self.cpi = pd.read_csv(cpi_path, index_col=0, parse_dates=True).sort_index().astype(float)
-        self.refi_rate = pd.read_csv(refi_rate_path, index_col=0, parse_dates=True).sort_index().astype(float)
-        self.yield_10Y = pd.read_csv(yield_10Y_path, index_col=0, parse_dates=True).sort_index().astype(float)
+        self.cpi = pd.read_csv(cpi_path, index_col=0, parse_dates=True).sort_index().astype(float).pct_change()[1:]
+        self.refi_rate = pd.read_csv(refi_rate_path, index_col=0, parse_dates=True).sort_index().astype(float).pct_change()[1:]
+        self.yield_10Y = pd.read_csv(yield_10Y_path, index_col=0, parse_dates=True).sort_index().astype(float).pct_change()[1:]
 
     def load_sensitivity_matrix(self, sensitivity_file: str = "sensi_macro.csv"):
         """
@@ -32,13 +32,13 @@ class DataMacro:
         sensitivity_path = os.path.join(self.base_path, sensitivity_file)
         self.sensitivity_matrix = pd.read_csv(sensitivity_path, index_col=0).astype(float)
 
-    def compute_weighted_view(self, macro_view: pd.Series):
+    def compute_weighted_view(self, macro_view: pd.Series) -> pd.Series:
         """
         Compute the weighted macro view based on sensitivities.
         - Normalizes the macro views to avoid scale bias across variables.
         - Multiplies the normalized macro views by the sensitivity matrix to compute sector-level impacts.
 
-        :param macro_view: series with next estimated value for each macro variable.
+        :param macro_view: series with next estimated value for each macro variable (% > average for example)
                            Keys should match the columns of the sensitivity matrix.
         :return: pandas Series with tilts for each sector.
         """
@@ -49,6 +49,7 @@ class DataMacro:
         normalized_macro_view = (macro_view - macro_view.mean()) / macro_view.std()
         
         # Compute tilts by multiplying sensitivities with normalized macro views
-        tilts = self.sensitivity_matrix.mul(normalized_macro_view, axis=1).sum(axis=1)
+        tilts = self.sensitivity_matrix.mul(normalized_macro_view, axis=1)
+        tilts = tilts.sum(axis=1)
         
         return tilts
