@@ -46,7 +46,7 @@ class MomentumTactical(BlackLittermanTactical):
         momentum_zscore = zscore(momentum, nan_policy='omit').fillna(0)
         momentum_zscore[f'Fractile_Momentum'] = pd.qcut(momentum_zscore, q=self.nb_fractile, labels=range(1, self.nb_fractile + 1))
         num_long = len(momentum_zscore[momentum_zscore[f"Fractile_Momentum"] == self.nb_fractile])
-        num_short = len(momentum_zscore[momentum_zscore[f"Fractile_{self.target_factor}"] == 1])
+        num_short = len(momentum_zscore[momentum_zscore[f"Fractile_Momentum"] == 1])
 
         normalized_views = momentum_zscore[f"Fractile_Momentum"].apply(
             lambda x: 1 / num_long if x == self.nb_fractile else -1 / num_short if x == 1 else 0
