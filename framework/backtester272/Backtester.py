@@ -374,10 +374,21 @@ class Backtester:
         for date in date_range:
             daily_returns = returns.loc[date]
 
-            if date in weights.index:
-                # Jour de rebalancement : on applique les poids cibles
-                current_weights = weights.loc[date]
-                
+            # Récupérer la date suivante dans date_range s'il y en a une
+            current_idx = date_range.get_loc(date)
+            next_date = date_range[current_idx + 1] if current_idx + 1 < len(date_range) else None
+
+            # Chercher dans weights une date de rebalancement comprise entre la date courante (incluse)
+            # et la prochaine date dans date_range (non incluse)
+            rebalancing_dates = [
+                wd for wd in weights.index 
+                if wd >= date and (next_date is None or wd < next_date)
+            ]
+            if rebalancing_dates:
+                # On prend la date la plus proche correspondant au rebalancement
+                reb_date = min(rebalancing_dates)
+                current_weights = weights.loc[reb_date]
+
                 # Calculer les changements de positions
                 changes = (current_weights - previous_weights) * balance
 
@@ -388,9 +399,9 @@ class Backtester:
                 self.total_transaction_costs += transaction_costs
                 balance -= transaction_costs
             else:
-                # Pas de rebalancement : on conserve les poids de la veille
+                # Sans rebalancement, on conserve les poids de la veille
                 current_weights = previous_weights.copy()
-
+                #print(self.get_drifted_weights(date, self.weights) - current_weights)
             # Calculer le rendement du portefeuille pour la journée
             portfolio_return = (current_weights * daily_returns).sum()
 
@@ -399,7 +410,10 @@ class Backtester:
 
             # Actualiser les poids pour refléter le drift dû aux rendements journaliers
             # Chaque actif évolue selon son rendement, ce qui modifie la composition relative
+
             drifted_weights = (current_weights * (1 + daily_returns)) / (1 + portfolio_return)
+   
+
             previous_weights = drifted_weights.copy()
 
             # Enregistrer la valeur du portefeuille et la date
@@ -437,30 +451,27 @@ class Backtester:
             return base_weights
 
         # Extraire les données de prix entre la date de base et la date demandée
-        price_df = self.data.loc[base_date:date]
-        
+        returns = self.data.pct_change()[1:].loc[base_date:date]
+
         # Vérifier que le DataFrame n'est pas vide
-        if price_df.empty:
+        if returns.empty:
             return base_weights
 
         # Si la date de base n'est pas exactement présente, on ajuste la date de base
-        if price_df.index[0] != base_date:
+        if returns.index[0] != base_date:
             # Ici, on choisit de prendre le premier jour disponible dans les données de prix comme nouvelle base.
-            base_date = price_df.index[0]
+            base_date = returns.index[0]
             # Vous pouvez également logguer un avertissement pour signaler ce changement.
-        
-        # Calcul des rendements journaliers à partir des prix
-        returns = price_df.pct_change().dropna()
 
         # Initialiser les poids courants avec les poids de base
         current_weights = base_weights.copy()
 
         # Appliquer le drift jour par jour
-        for day in returns.index:
+        for day in returns.index[:-1]:
             r = returns.loc[day]
             portfolio_return = (current_weights * r).sum()
             current_weights = (current_weights * (1 + r)) / (1 + portfolio_return)
-
+        
         return current_weights
             
 
