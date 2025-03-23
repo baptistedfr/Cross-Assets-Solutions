@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from backtester272.Tactical import BlackLittermanTactical, filter_with_signals
+from scipy.stats import zscore
 
 class MomentumTactical(BlackLittermanTactical):
     """
@@ -8,7 +9,7 @@ class MomentumTactical(BlackLittermanTactical):
     
     Les vues sont calculées à partir d'un signal momentum dérivé de l'historique des prix.
     """
-    def __init__(self, delta: int = 0, **kwargs) -> None:
+    def __init__(self, delta: int = 0, nb_fractile : int =4, **kwargs) -> None:
         """
         Initialise la tactique Momentum avec un paramètre pour définir le delta.
 
@@ -16,6 +17,7 @@ class MomentumTactical(BlackLittermanTactical):
             delta (int): Nombre de jours soustrait du jour T. On calcule le rendement entre T - (len(historical_data) - 1) et T - delta.
         """
         super().__init__(**kwargs)
+        self.nb_fractile = nb_fractile
         self.delta = delta
         
     @filter_with_signals
@@ -41,8 +43,14 @@ class MomentumTactical(BlackLittermanTactical):
         end_prices = historical_data.iloc[-(self.delta + 1)]
         # Calcul du rendement momentum
         momentum = (end_prices / start_prices) - 1
-        # Normalisation pour obtenir un vecteur de poids
-        normalized_views = momentum / momentum.abs().sum()
+        momentum_zscore = zscore(momentum, nan_policy='omit').fillna(0)
+        momentum_zscore[f'Fractile_Momentum'] = pd.qcut(momentum_zscore, q=self.nb_fractile, labels=range(1, self.nb_fractile + 1))
+        num_long = len(momentum_zscore[momentum_zscore[f"Fractile_Momentum"] == self.nb_fractile])
+        num_short = len(momentum_zscore[momentum_zscore[f"Fractile_{self.target_factor}"] == 1])
+
+        normalized_views = momentum_zscore[f"Fractile_Momentum"].apply(
+            lambda x: 1 / num_long if x == self.nb_fractile else -1 / num_short if x == 1 else 0
+        )
         return normalized_views
     
 class ValueTactical(BlackLittermanTactical):
