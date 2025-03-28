@@ -1,0 +1,12 @@
+﻿Secteur,Pente 10Y-2Y,Taux10Y,CPI Rate,ZEW,Chômage,Taux d’épargne,GDP and Forecast
+Information Technology,-1,2,2,-1,1,0,-1
+Communication Services,-1,0,0,0,0,0,-1
+Health Care,-1,0,0,0,0,0,-1
+Financials,0,-1,0,-1,1,-1,0
+Real Estate,-1,3,2,-1,1,-1,-1
+Consumer Discretionary,-1,1,2,-1,1,-1,-1
+Consumer Staples,-1,1,-1,0,0,-1,-1
+Industrials,-1,2,2,-1,1,0,-1
+Materials,-1,2,-1,-1,1,0,-1
+Energy,-1,2,-1,-1,1,0,-1
+Utilities,-1,0,1,0,0,0,-1

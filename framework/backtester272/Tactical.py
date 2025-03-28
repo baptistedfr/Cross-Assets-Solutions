@@ -4,7 +4,6 @@ import numpy as np
 from scipy.optimize import minimize
 from typing import List, Dict
 from backtester272.Strategy import filter_with_signals
-from pypfopt import BlackLittermanModel, black_litterman, risk_models
 
 
 class Tactical(ABC):

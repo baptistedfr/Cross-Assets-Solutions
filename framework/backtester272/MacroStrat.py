@@ -30,11 +30,16 @@ class MacroTactical():
             Tuple[pd.Series, pd.Series, pd.Series]: données macro sur la bonne fenêtre
         """
         start_date = current_date - pd.Timedelta(days=self.window_size)
-        filtered_cpi = self.data_macro.cpi.loc[start_date:current_date].squeeze()
-        filtered_refi_rate = self.data_macro.refi_rate.loc[start_date:current_date].squeeze()
-        filtered_yield_10Y = self.data_macro.yield_10Y.loc[start_date:current_date].squeeze()
 
-        return filtered_cpi, filtered_refi_rate, filtered_yield_10Y
+        filtered_spread_2Y10Y = self.data_macro.spread_2Y10Y.loc[start_date:current_date].squeeze()
+        filtered_yield_10Y = self.data_macro.yield_10Y.loc[start_date:current_date].squeeze()
+        filtered_cpi = self.data_macro.cpi.loc[start_date:current_date].squeeze()
+        filtered_ZEW = self.data_macro.ZEW.loc[start_date:current_date].squeeze()
+        filtered_unemployment = self.data_macro.unemployment.loc[start_date:current_date].squeeze()
+        filtered_savings = self.data_macro.savings.loc[start_date:current_date].squeeze()
+        filtered_GDP = self.data_macro.GDP.loc[start_date:current_date].squeeze()
+
+        return filtered_spread_2Y10Y, filtered_yield_10Y, filtered_cpi, filtered_ZEW, filtered_unemployment, filtered_savings, filtered_GDP
     
     def calculate_zscore_signal(self, series: pd.Series) -> float:
         """
@@ -74,16 +79,26 @@ class MacroTactical():
             pd.Series: La nouvelle position (poids) pour chaque actif.
         """
         # On récupère les données avant la date 'current_date' sur la période de la fenêtre
-        cpi, refi, yield_10Y = self.generate_window_data(current_date)
+        spread_2Y10Y, yield_10Y, cpi, zew_signal, unemployment, savings, GDP = self.generate_window_data(current_date)
 
-        # On filtre (moyenne mobile exponentielle par exemple) pour avoir un forcast en t+1
-        cpi_signal = self.calculate_zscore_signal(cpi)
-        refi_signal = self.calculate_zscore_signal(refi)
+        # On calcule les signaux
+        spread_2Y10Y_signal = self.calculate_zscore_signal(spread_2Y10Y)
         yield_10Y_signal = self.calculate_zscore_signal(yield_10Y)
+        cpi_signal = self.calculate_zscore_signal(cpi)
+        zew_signal = self.calculate_zscore_signal(zew_signal)
+        unemployment_signal = self.calculate_zscore_signal(unemployment)
+        savings_signal = self.calculate_zscore_signal(savings)
+        GDP_signal = self.calculate_zscore_signal(GDP)
+
+        # On crée un dictionnaire avec les signaux
         macro_signals = pd.Series({
-            'CPI': cpi_signal,
-            'Refi': refi_signal,
-            '10Y': yield_10Y_signal
+            'Pente 10Y-2Y': spread_2Y10Y_signal,
+            'Taux10Y': yield_10Y_signal,
+            'CPI Rate': cpi_signal,
+            'ZEW': zew_signal,
+            'Chômage': unemployment_signal,
+            'Taux d’épargne': savings_signal,
+            'GDP and Forecast': GDP_signal       
         })
 
         # Convertir les singaux en tilts avec la matrice de sensibilité

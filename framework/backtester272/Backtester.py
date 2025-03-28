@@ -70,6 +70,9 @@ class Backtester:
                     raise ValueError("L'index des données doit être de type datetime.")
 
         self.benchmark_weights = benchmark_weights
+        
+        # Gestion des données manquantes, calcul des poids et performance
+        self.data = self.handle_missing_data(self.data)
 
         # Gestion de l'univers d'actifs par date
         self.dates_universe = {}
@@ -94,8 +97,7 @@ class Backtester:
             
             self.dates_universe = dates_universe
 
-            # Gestion des données manquantes, calcul des poids et performance
-            self.handle_missing_data()
+            
 
     def run(self, 
             start_date: Optional[pd.Timestamp] = None, 
@@ -109,7 +111,8 @@ class Backtester:
             transaction_cost: float = 0.0, 
             strategy: Strategy = None,
             macro: MacroTactical = None,
-            tactical: Tactical = None) -> Result:
+            tactical: Tactical = None,
+            name: str = None) -> Result:
         """
         Exécute le backtest sur la période spécifiée avec les paramètres donnés.
 
@@ -130,6 +133,9 @@ class Backtester:
         """
         if strategy is None:
             raise ValueError("Une stratégie doit être fournie pour exécuter le backtest.")
+        
+        if name is not None:
+            strategy.name = name
 
         if start_date is None:
             start_date = self.data.index[0]
@@ -254,22 +260,24 @@ class Backtester:
                       result_tactical_macro_benchmark_weights)
     
 
-
-    def handle_missing_data(self) -> None:
+    @staticmethod
+    def handle_missing_data(data) -> None:
         """
         Gère les données manquantes en remplissant les valeurs dans les colonnes valides.
         """
         # Supprime les colonnes entièrement vides et conserve les données numériques
-        self.data = self.data.dropna(axis=1, how='all').select_dtypes(include=[np.number])
+        data = data.dropna(axis=1, how='all').select_dtypes(include=[np.number])
 
         # Remplit les valeurs manquantes entre le premier et le dernier index valides
-        for col in self.data.columns:
-            self.data[col] = self.data[col].loc[
-                self.data[col].first_valid_index():self.data[col].last_valid_index()
+        for col in data.columns:
+            data[col] = data[col].loc[
+                data[col].first_valid_index():data[col].last_valid_index()
             ].ffill()
 
-        if self.data.empty:
+        if data.empty:
             raise ValueError("Aucune donnée disponible après le traitement des valeurs manquantes.")
+        
+        return data
 
     def calculate_weights(self, strategy: Union[Strategy, Tactical], relative_weights: pd.DataFrame = None) -> None:
         """
@@ -405,7 +413,7 @@ class Backtester:
         # Assigner les poids calculés à l'attribut de la classe
         return optimal_weights_df.fillna(0.0)
 
-    def calculate_performance(self, weights: pd.Series) -> pd.Series:
+    def calculate_performance(self, weights: pd.Series, debug: bool = False) -> pd.Series:
         """
         Calcule la performance du portefeuille en utilisant les poids calculés et en tenant compte du drift des poids en l'absence de rebalancement.
         """
@@ -463,7 +471,9 @@ class Backtester:
             else:
                 # Sans rebalancement, on conserve les poids de la veille
                 current_weights = previous_weights.copy()
-                #print(self.get_drifted_weights(date, self.weights) - current_weights)
+
+                print(date, self.get_drifted_weights(date, weights) - current_weights) if debug else None
+
             # Calculer le rendement du portefeuille pour la journée
             portfolio_return = (current_weights * daily_returns).sum()
 
@@ -491,7 +501,7 @@ class Backtester:
         Si la date n'est pas directement présente, on utilise la dernière date de poids disponible 
         et on calcule le drift jour par jour jusqu'à la date demandée.
         """
-        if weights is None:
+        if weights is None: 
             raise ValueError("Aucun poids de stratégie n'a été fourni.")
 
         if not isinstance(date, pd.Timestamp):
@@ -536,7 +546,6 @@ class Backtester:
         
         return current_weights
             
-
     def rebase_performances(self, *performances: pd.Series) -> list:
         """
         Rebase plusieurs séries de performance de sorte qu'elles commencent toutes à 100
