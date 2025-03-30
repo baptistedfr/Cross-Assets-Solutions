@@ -591,6 +591,7 @@ class Result:
 
         if highlight_extremes:
             def highlight_extremes_higher_better(s):
+                s = s.str.rstrip('%').astype(float)
                 is_max = s == s.max()
                 is_min = s == s.min()
                 return ['background-color: green' if v else 'background-color: red' if w else '' for v, w in zip(is_max, is_min)]
@@ -602,8 +603,8 @@ class Result:
 
             # Appliquer les deux styles en une seule chaîne
             styled_metrics_df = (metrics_df.style
-                .apply(highlight_extremes_higher_better, subset=['Performance', 'Sharpe Ratio', 'Hit Ratio'], axis=0)
-                .apply(highlight_extremes_lower_better, subset=['Volatility', 'CAGR', 'Max Drawdown', 'Average Win', 'Average Loss'], axis=0)
+                .apply(highlight_extremes_higher_better, subset=['Performance','CAGR','Sharpe Ratio', 'Hit Ratio', 'Average Win'], axis=0)
+                .apply(highlight_extremes_lower_better, subset=['Volatility', 'Max Drawdown','Average Loss'], axis=0)
                 )       
 
             return styled_metrics_df
