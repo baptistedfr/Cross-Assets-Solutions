@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import seaborn as sns
 import numpy as np
 import matplotlib.dates as mdates
+import quantstats as qs
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -225,7 +226,8 @@ class Result:
         else:
             annualized_transactions_cost = 0
 
-        hit_ratio, average_win, average_loss = self.compute_hit_ratio(performance, weights)
+        win_rate = qs.stats.win_rate(performance, aggregate="month")
+        average_win, average_loss = qs.stats.avg_win(performance, aggregate="month"), qs.stats.avg_loss(performance, aggregate="month")
 
         metrics = {
             'Performance': f"{self.perf(performance):.2%}",
@@ -233,7 +235,7 @@ class Result:
             'Volatility': f"{self.volatility(performance):.2%}",
             'Max Drawdown': f"{self.max_drawdown(performance):.2%}",
             'Sharpe Ratio': f"{self.sharpe_ratio(performance):.2f}",
-            'Hit Ratio': f"{hit_ratio:.2%}",
+            'Win Rate': f"{win_rate:.2%}",
             'Average Win': f"{average_win:.2%}",
             'Average Loss': f"{average_loss:.2%}",
             'Annualized Transactions Cost': f"{annualized_transactions_cost:.2%}"
@@ -360,12 +362,19 @@ class Result:
 
         # Création de la figure avec GridSpec
         num_results = len(names)
-        fig = plt.figure(figsize=(12 + len(names)*2, 28 if self.benchmark is not None else 22))  # Ajustement de la largeur
-        size = 8 if self.benchmark is not None else 6
-        gs = fig.add_gridspec(size, max(1, num_results), hspace=0.6, wspace=0.03)  # hspace ajusté, wspace réduit
+        height = 8
+        height += 2 if self.benchmark is not None else 0
+        height += 2 if self.tactical_performance is not None or self.macro_performance is not None else 0
+        width = 12 + len(names)*2
+
+        increment = 0
+
+        fig = plt.figure(figsize=(width, height * 3))  # Ajustement de la largeur
+        
+        gs = fig.add_gridspec(height, max(1, num_results), hspace=0.6, wspace=0.03)  # hspace ajusté, wspace réduit
 
         # Performance (prend deux lignes)
-        ax_perf = fig.add_subplot(gs[0:2, :])
+        ax_perf = fig.add_subplot(gs[increment:increment+2, :])
         sns.set(style="whitegrid")
         for perf, name in zip(performances[::-1], names[::-1]):
             if name == 'Benchmark':
@@ -380,10 +389,32 @@ class Result:
         ax_perf.axhline(perf.iloc[0], color='black', linestyle='--', linewidth=1)
         ax_perf.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{(x - perf.iloc[0])/perf.iloc[0]:.0%}'))
         ax_perf.grid(True)
+        increment += 2
+
+        # Performance (échelle log)
+        ax_log = fig.add_subplot(gs[increment:increment+2, :])
+        sns.set(style="whitegrid")
+        for perf, name in zip(performances[::-1], names[::-1]):
+            if name == 'Benchmark':
+                ax_log.plot(perf.index, perf, label=name, color='black', linewidth=2, linestyle='--')
+            else:
+                ax_log.plot(perf.index, perf, label=name, linewidth=2)
+
+        ax_log.set_title("Performance des stratégies", fontsize=16)
+        ax_log.set_ylabel("Valeur")
+        ax_log.set_yscale("log")  # Passage en échelle logarithmique
+        ax_log.legend(loc="upper left", fontsize=10)
+        # Ligne de base à la valeur initiale en pointillés
+        ax_log.axhline(perf.iloc[0], color='black', linestyle='--', linewidth=1)
+        # Format de l'échelle pour afficher le rendement par rapport à la valeur initiale
+        ax_log.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{(x/perf.iloc[0]-1):.0%}'))
+        ax_log.grid(True, which="both")
+        increment += 2
+
 
         if self.benchmark is not None:
-            # Tracking Error
-            ax_te = fig.add_subplot(gs[2:4, :])
+            # Tracking Error relative to benchmark
+            ax_te = fig.add_subplot(gs[increment:increment+2, :])
             for perf, name in zip(performances[1:], names[1:]):
                 te = (perf.pct_change() - performances[0].pct_change()).dropna()
                 te = (1 + te).cumprod() - 1
@@ -394,10 +425,30 @@ class Result:
             ax_te.axhline(0, color='black', linestyle='--', linewidth=1)
             ax_te.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.0%}'))
             ax_te.grid(True)
+            increment += 2
 
-            increment = 4
-        else:
-            increment = 2
+
+
+        if self.tactical_performance is not None or self.macro_performance is not None:
+            # Tracking Error relative to strategy
+            ax_te = fig.add_subplot(gs[increment:increment+2, :])
+            te = (self.tactical_performance.pct_change() - self.performance.pct_change()).dropna()
+            te = (1 + te).cumprod() - 1
+            ax_te.plot(te.index, te, label="Tactical", linewidth=2)
+            te = (self.macro_performance.pct_change() - self.performance.pct_change()).dropna()
+            te = (1 + te).cumprod() - 1
+            ax_te.plot(te.index, te, label="Macro", linewidth=2)
+            te = (self.tactical_macro_performance.pct_change() - self.performance.pct_change()).dropna()
+            te = (1 + te).cumprod() - 1
+            ax_te.plot(te.index, te, label="Tactical Macro", linewidth=2)
+            ax_te.set_title("Performance des tactiques ou dynamiques autour de la stratégie", fontsize=16)
+            ax_te.set_ylabel("Écart de performance")
+            ax_te.legend(loc="upper left", fontsize=10)
+            ax_te.axhline(0, color='black', linestyle='--', linewidth=1)
+            ax_te.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.0%}'))
+            ax_te.grid(True)
+            increment += 2
+
 
         # Rendements annuels (EOY Returns)
         ax_eoy = fig.add_subplot(gs[increment, :])
@@ -412,6 +463,7 @@ class Result:
         ax_eoy.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.0%}'))
         ax_eoy.legend(loc="upper left", fontsize=10)
         ax_eoy.grid(True)
+        increment += 1
 
         # Drawdowns
         drawdown_min = min(dd.min() for dd in drawdowns)
@@ -419,7 +471,7 @@ class Result:
         date_min = min(dd.index.min() for dd in drawdowns)
         date_max = max(dd.index.max() for dd in drawdowns)
         for i, (dd, name) in enumerate(zip(drawdowns, names)):
-            ax_dd = fig.add_subplot(gs[increment + 1, i])
+            ax_dd = fig.add_subplot(gs[increment, i])
             sns.lineplot(ax=ax_dd, x=dd.index, y=dd, color='red')
             ax_dd.fill_between(dd.index, dd, 0, color='red', alpha=0.3)
             ax_dd.set_title(name, fontsize=14, fontweight='bold')
@@ -438,6 +490,7 @@ class Result:
             # Réduction de la densité des dates
             ax_dd.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=5))
             ax_dd.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        increment += 1
 
 
         # Histogrammes
@@ -454,7 +507,7 @@ class Result:
         ret_max_y = max(h.max() for h in hist_data)
 
         for i, (r, name) in enumerate(zip(returns, names)):
-            ax_ret = fig.add_subplot(gs[increment + 2, i])
+            ax_ret = fig.add_subplot(gs[increment, i])
             sns.histplot(ax=ax_ret, data=r, kde=True, bins=30, color='blue')
             if i == 0:
                 ax_ret.set_ylabel("Rendements")
@@ -603,8 +656,8 @@ class Result:
 
             # Appliquer les deux styles en une seule chaîne
             styled_metrics_df = (metrics_df.style
-                .apply(highlight_extremes_higher_better, subset=['Performance','CAGR','Sharpe Ratio', 'Hit Ratio', 'Average Win'], axis=0)
-                .apply(highlight_extremes_lower_better, subset=['Volatility', 'Max Drawdown','Average Loss'], axis=0)
+                .apply(highlight_extremes_higher_better, subset=['Performance','CAGR','Sharpe Ratio', 'Win Rate', 'Average Win', 'Average Loss'], axis=0)
+                .apply(highlight_extremes_lower_better, subset=['Volatility', 'Max Drawdown'], axis=0)
                 )       
 
             return styled_metrics_df
