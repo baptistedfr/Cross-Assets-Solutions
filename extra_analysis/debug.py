@@ -1,4 +1,4 @@
-import backtester272 as bt
+from ..framework import backtester272 as bt
 import pandas as pd
 import numpy as np
 import os
