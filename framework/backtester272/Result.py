@@ -238,7 +238,6 @@ class Result:
             'Win Rate': f"{win_rate:.2%}",
             'Average Win': f"{average_win:.2%}",
             'Average Loss': f"{average_loss:.2%}",
-            'Annualized Transactions Cost': f"{annualized_transactions_cost:.2%}"
         }
 
         if benchmark is not None:
@@ -640,7 +639,6 @@ class Result:
         # Création d'un DataFrame pour les métriques
         metrics_df = pd.DataFrame(metrics)
         metrics_df.index = names
-        metrics_df.drop(columns=['Annualized Transactions Cost'], inplace=True)
 
         if highlight_extremes:
             def highlight_extremes_higher_better(s):
@@ -650,6 +648,7 @@ class Result:
                 return ['background-color: green' if v else 'background-color: red' if w else '' for v, w in zip(is_max, is_min)]
 
             def highlight_extremes_lower_better(s):
+                s = s.str.rstrip('%').astype(float)
                 is_max = s == s.max()
                 is_min = s == s.min()
                 return ['background-color: red' if v else 'background-color: green' if w else '' for v, w in zip(is_max, is_min)]

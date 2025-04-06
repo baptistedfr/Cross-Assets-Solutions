@@ -133,36 +133,3 @@ class MomentumTactical(AlphaBasedTactical):
         normalized_views = momentum / momentum.abs().sum()
         return normalized_views
     
-class ValueTactical(AlphaBasedTactical):
-    """
-    Classe qui implémente la partie tactique Black-Litterman basée sur un signal de value.
-    
-    Le signal est calculé comme le rapport de l'ancien prix sur le nouveau prix.
-    """
-
-    @filter_with_signals
-    def get_views(self, historical_data: pd.DataFrame, current_position: pd.Series) -> pd.Series:
-        """
-        Calcule les vues en se basant sur un signal value.
-        
-        Pour chaque actif, le signal est calculé comme le rapport de l'ancien prix (première observation)
-        sur le nouveau prix (la (delta+1)-ème dernière observation). 
-        Ce signal est ensuite normalisé pour obtenir un vecteur de poids.
-        
-        Args:
-            historical_data (pd.DataFrame): DataFrame contenant les prix historiques.
-                                             Les colonnes représentent les actifs.
-            current_position (pd.Series): Le vecteur de poids actuel (non utilisé ici, mais disponible si besoin).
-            
-        Returns:
-            pd.Series: Vecteur de poids basé sur le signal value.
-        """
-        # Prix de départ : première observation de la série
-        start_prices = historical_data.iloc[0]
-        # Prix à T - delta : la (delta+1)-ème dernière observation
-        end_prices = historical_data.iloc[-1]
-        # Calcul du signal value : ancien prix / nouveau prix
-        value_signal = start_prices / end_prices
-        # Normalisation pour obtenir un vecteur de poids
-        normalized_views = value_signal / value_signal.abs().sum()
-        return normalized_views
