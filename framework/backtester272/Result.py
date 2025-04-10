@@ -107,6 +107,25 @@ class Result:
         returns = prices.pct_change().dropna()
         return returns.std() * (self.periods_freq(prices) ** 0.5)
 
+    def downside_volatility(self, prices: pd.Series) -> float:
+        """
+        Calcule la volatilité de downside annualisée d'une série de prix,
+        en considérant uniquement les rendements en dessous du MAR (Minimum Acceptable Return).
+
+        Args:
+            prices (pd.Series): Série temporelle des prix.
+
+        Returns:
+            float: Volatilité de downside annualisée.
+        """
+        returns = prices.pct_change().dropna()
+        downside_returns = returns[returns < 0]
+        if len(downside_returns) == 0:
+            return 0.0
+        downside_std = downside_returns.std()
+        return downside_std * (self.periods_freq(prices) ** 0.5)
+
+
     def perf(self, prices: pd.Series) -> float:
         """
         Calcule la performance totale d'une série de prix.
@@ -157,10 +176,62 @@ class Result:
         Returns:
             float: Ratio de Sharpe.
         """
-        returns = prices.pct_change().dropna()
-        excess_returns = returns - risk_free_rate / self.periods_freq(prices)
-        return excess_returns.mean() / excess_returns.std() * (self.periods_freq(prices) ** 0.5)
+        annualised_return = self.cagr(prices)
+        annualised_volatility = self.volatility(prices)
+        return (annualised_return - risk_free_rate) / annualised_volatility if annualised_volatility != 0 else np.nan
+        # returns = prices.pct_change().dropna()
+        # excess_returns = returns - risk_free_rate / self.periods_freq(prices)
+        # return excess_returns.mean() / excess_returns.std() * (self.periods_freq(prices) ** 0.5)
     
+    def sortino_ratio(self, prices: pd.Series, risk_free_rate: float = 0.0, mar: float = 0.0) -> float:
+        """
+        Calcule le ratio de Sortino d'une série de prix.
+
+        Args:
+            prices (pd.Series): Série temporelle des prix.
+            risk_free_rate (float): Taux sans risque annualisé (par défaut 0).
+            mar (float): Minimum Acceptable Return (par défaut 0).
+
+        Returns:
+            float: Ratio de Sortino annualisé.
+        """
+        downside_volatility = self.downside_volatility(prices)
+        annualised_return = self.cagr(prices)
+        return (annualised_return - risk_free_rate) / downside_volatility if downside_volatility != 0 else np.nan
+
+    def value_at_risk(self, prices: pd.Series, confidence_level: float = 0.95) -> float:
+        """
+        Calcule la Value at Risk (VaR) historique d'une série de prix.
+
+        Args:
+            prices (pd.Series): Série temporelle des prix.
+            confidence_level (float): Niveau de confiance (par défaut 95%).
+
+        Returns:
+            float: VaR au niveau de confiance donné (rendement négatif).
+        """
+        returns = prices.pct_change().dropna()
+        return np.percentile(returns, (1 - confidence_level) * 100)
+
+    def conditional_value_at_risk(self, prices: pd.Series, confidence_level: float = 0.95) -> float:
+        """
+        Calcule la Conditional Value at Risk (CVaR) historique (aussi appelée Expected Shortfall).
+
+        Args:
+            prices (pd.Series): Série temporelle des prix.
+            confidence_level (float): Niveau de confiance (par défaut 95%).
+
+        Returns:
+            float: CVaR (perte moyenne au-delà de la VaR).
+        """
+        returns = prices.pct_change().dropna()
+        var_threshold = np.percentile(returns, (1 - confidence_level) * 100)
+        tail_losses = returns[returns <= var_threshold]
+        
+        if tail_losses.empty:
+            return 0.0  # Pas de pertes extrêmes observées
+        return tail_losses.mean()
+
     def compute_hit_ratio(self, performance: pd.Series, weights: pd.DataFrame):
         """
         Calcule le hit ratio, l'average win et l'average loss à partir de la série de performance
@@ -233,15 +304,25 @@ class Result:
             'Performance': f"{self.perf(performance):.2%}",
             'CAGR': f"{self.cagr(performance):.2%}",
             'Volatility': f"{self.volatility(performance):.2%}",
+            'Downside Volatility': f"{self.downside_volatility(performance):.2%}",
             'Max Drawdown': f"{self.max_drawdown(performance):.2%}",
+            'Max Drawdown Date': self.max_drawdown_date(performance).strftime('%Y-%m-%d'),
             'Sharpe Ratio': f"{self.sharpe_ratio(performance):.2f}",
-            'Win Rate': f"{win_rate:.2%}",
-            'Average Win': f"{average_win:.2%}",
-            'Average Loss': f"{average_loss:.2%}",
+            'Sortino Ratio': f"{self.sortino_ratio(performance):.2f}",
+            'Calmar Ratio': f"{self.calmar_ratio(performance):.2f}",
+            'VaR (95%)': f"{self.value_at_risk(performance):.2%}",
+            'CVaR (95%)': f"{self.conditional_value_at_risk(performance):.2%}",
+            # 'Win Rate': f"{win_rate:.2%}",
+            # 'Average Win': f"{average_win:.2%}",
+            # 'Average Loss': f"{average_loss:.2%}",
         }
 
         if benchmark is not None:
             metrics['Tracking Error'] = f"{self.calculate_tracking_error(performance, benchmark):.2%}"
+            metrics['Beta'] = f"{self.beta(performance, benchmark):.2f}"
+            metrics['Treynor Ratio'] = f"{self.treynor_ratio(performance, benchmark):.2f}"
+            metrics['Alpha'] = f"{self.alpha(performance, benchmark):.2%}"
+            metrics['Information Ratio'] = f"{self.information_ratio(performance, benchmark):.2f}"
 
         return metrics
 
@@ -262,6 +343,17 @@ class Result:
         if performance is None:
             performance = self.performance
         return performance / performance.cummax() - 1
+    
+    def max_drawdown_date(self, performance: pd.Series) -> pd.Timestamp:
+        """Date du drawdown maximal."""
+        drawdowns = self.calculate_drawdown(performance)
+        return drawdowns.idxmin()
+    
+    def calmar_ratio(self, performance) -> float:
+        """Calcul du ratio de Calmar."""
+        ann_return = self.cagr(performance)
+        max_dd = self.max_drawdown(performance)
+        return ann_return / abs(max_dd) if max_dd !=0 else np.nan
 
     def calculate_tracking_error(self, performance: pd.Series = None, benchmark: pd.Series = None) -> float:
         """
@@ -279,6 +371,34 @@ class Result:
             benchmark = self.benchmark
 
         return (performance.pct_change() - benchmark.pct_change()).dropna().std() * (self.periods_freq(performance) ** 0.5)
+    
+    def beta(self, performance: pd.Series = None, benchmark: pd.Series = None) -> float:
+        """Calcul du beta par rapport au benchmark."""
+        returns = performance.pct_change().dropna()
+        benchmark_returns = benchmark.pct_change().dropna()
+        covariance = np.cov(returns, benchmark_returns)[0, 1]
+        benchmark_variance = benchmark_returns.var()
+        return covariance / benchmark_variance
+    
+    def treynor_ratio(self, performance: pd.Series = None, benchmark: pd.Series = None, risk_free_rate: float = 0.0) -> float:
+        """Calcul du ratio de Treynor."""
+        ann_return = self.cagr(performance)
+        beta = self.beta(performance, benchmark)
+        return (ann_return - risk_free_rate) / beta
+    
+    def alpha(self, performance: pd.Series = None, benchmark: pd.Series = None, risk_free_rate: float = 0.0) -> float:
+        """Calcul de l'alpha du portefeuille"""
+        ann_ptf_return = self.cagr(performance)
+        beta = self.beta(performance, benchmark)
+        ann_market_return = self.cagr(benchmark)
+
+        return ann_ptf_return - risk_free_rate - beta*(ann_market_return-risk_free_rate)
+    
+    def information_ratio(self, performance: pd.Series = None, benchmark: pd.Series = None, risk_free_rate: float = 0.0) -> float:
+        """Calcul du ratio d'information."""
+        alpha = self.alpha(performance, benchmark, risk_free_rate)
+        tracking_error = self.calculate_tracking_error(performance, benchmark)
+        return alpha/tracking_error
 
     def compare(self, *other_results: 'Result') -> None:
         """
@@ -352,6 +472,10 @@ class Result:
         if self.benchmark is not None:
             # Rajoute la métrique de tracking error pour le benchmark classique
             metrics[0]['Tracking Error'] = self.calculate_tracking_error(self.benchmark)
+            metrics[0]['Beta'] = "0.00"
+            metrics[0]['Treynor Ratio'] = "0.00"
+            metrics[0]['Alpha'] = "0.00%"
+            metrics[0]['Information Ratio'] = "0.00"
 
         # Calcul des rendements annuels (EOY Returns)
         eoy_returns = []
@@ -634,7 +758,10 @@ class Result:
         if self.benchmark is not None:
             # Rajoute la métrique de tracking error pour le benchmark classique
             metrics[0]['Tracking Error'] = "0.00%"
-    
+            metrics[0]['Beta'] = "0.00"
+            metrics[0]['Treynor Ratio'] = "0.00"
+            metrics[0]['Alpha'] = "0.00%"
+            metrics[0]['Information Ratio'] = "0.00"
                 
         # Création d'un DataFrame pour les métriques
         metrics_df = pd.DataFrame(metrics)
@@ -655,8 +782,11 @@ class Result:
 
             # Appliquer les deux styles en une seule chaîne
             styled_metrics_df = (metrics_df.style
-                .apply(highlight_extremes_higher_better, subset=['Performance','CAGR','Sharpe Ratio', 'Win Rate', 'Average Win', 'Average Loss'], axis=0)
-                .apply(highlight_extremes_lower_better, subset=['Volatility', 'Max Drawdown'], axis=0)
+                .apply(highlight_extremes_higher_better, subset=['Performance','CAGR','Max Drawdown','Sharpe Ratio','Sortino Ratio', 'Calmar Ratio', 
+                                                                 'VaR (95%)','CVaR (95%)',
+                                                                 'Alpha', 'Information Ratio', 'Treynor Ratio'],axis=0)
+                                                                  #'Win Rate', 'Average Win', 'Average Loss'], axis=0)
+                .apply(highlight_extremes_lower_better, subset=['Volatility', 'Downside Volatility'], axis=0)
                 )       
 
             return styled_metrics_df
