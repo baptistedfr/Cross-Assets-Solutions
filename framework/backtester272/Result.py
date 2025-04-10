@@ -693,7 +693,7 @@ class Result:
         else:
             weights = self.weights
 
-        weights_filtered = weights.loc[:, (weights != 0).any(axis=0)]
+        weights_filtered = weights.loc[:, (weights != 0).any(axis=0)].iloc[1:]
 
         # Créer une figure Plotly
         fig = go.Figure()
