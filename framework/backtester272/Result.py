@@ -400,7 +400,7 @@ class Result:
         tracking_error = self.calculate_tracking_error(performance, benchmark)
         return alpha/tracking_error
 
-    def compare(self, *other_results: 'Result') -> None:
+    def compare(self, highlighted_strat: str, *other_results: 'Result') -> None:
         """
         Compare les résultats de plusieurs stratégies avec des graphiques et un tableau de métriques.
 
@@ -432,7 +432,7 @@ class Result:
             + ([self.get_metrics(performance=self.tactical_macro_benchmark, benchmark=self.benchmark, weights=self.tactical_macro_benchmark_weight)] if self.tactical_macro_benchmark is not None else [])
             + [result.get_metrics(benchmark=self.benchmark, weights=result.weights) for result in results]
             + [result.get_metrics(performance=result.tactical_performance, benchmark=self.benchmark, weights=result.tactical_weight) for result in results if result.tactical_performance is not None]
-            + [result.get_metrics(benchmark=self.macro_benchmark, weights=result.macro_performance_weight) for result in results if hasattr(result, 'macro_benchmark') and result.macro_benchmark is not None]
+            + [result.get_metrics(performance=self.macro_performance, benchmark=self.benchmark, weights=result.macro_performance_weight) for result in results if hasattr(result, 'macro_benchmark') and result.macro_benchmark is not None]
             + [result.get_metrics(performance=result.tactical_macro_performance, benchmark=self.benchmark, weights=result.tactical_macro_performance_weight) for result in results if hasattr(result, 'tactical_macro_benchmark') and result.tactical_macro_benchmark is not None]
         )
         
@@ -500,10 +500,14 @@ class Result:
         ax_perf = fig.add_subplot(gs[increment:increment+2, :])
         sns.set(style="whitegrid")
         for perf, name in zip(performances[::-1], names[::-1]):
-            if name == 'Benchmark':
-                ax_perf.plot(perf.index, perf, label=name, color='black', linewidth=2, linestyle='--')
-            else:
+            if name in highlighted_strat:
                 ax_perf.plot(perf.index, perf, label=name, linewidth=2)
+            else :
+                if name == 'Benchmark':
+                    ax_perf.plot(perf.index, perf, label=name, color='black', linewidth=2, linestyle='--', alpha=0.5)
+                else:
+                    # ax_perf.plot(perf.index, perf, label=name, linewidth=2, alpha=0.2)
+                    pass
                 
         ax_perf.set_title("Performance des stratégies", fontsize=16)
         ax_perf.set_ylabel("Valeur")
@@ -518,19 +522,20 @@ class Result:
         ax_log = fig.add_subplot(gs[increment:increment+2, :])
         sns.set(style="whitegrid")
         for perf, name in zip(performances[::-1], names[::-1]):
+            discrete_index = np.arange(len(perf))  # Convert index to discrete time steps
             if name == 'Benchmark':
-                ax_log.plot(perf.index, perf, label=name, color='black', linewidth=2, linestyle='--')
+                ax_log.plot(discrete_index, np.log(perf), label=name, color='black', linewidth=2, linestyle='--')
             else:
-                ax_log.plot(perf.index, perf, label=name, linewidth=2)
+                ax_log.plot(discrete_index, np.log(perf), label=name, linewidth=2)
 
         ax_log.set_title("Performance des stratégies", fontsize=16)
         ax_log.set_ylabel("Valeur")
         ax_log.set_yscale("log")  # Passage en échelle logarithmique
         ax_log.legend(loc="upper left", fontsize=10)
         # Ligne de base à la valeur initiale en pointillés
-        ax_log.axhline(perf.iloc[0], color='black', linestyle='--', linewidth=1)
+        ax_log.axhline(np.log(perf.iloc[0]), color='black', linestyle='--', linewidth=1)
         # Format de l'échelle pour afficher le rendement par rapport à la valeur initiale
-        ax_log.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{(x/perf.iloc[0]-1):.0%}'))
+        ax_log.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{(np.exp(x)/perf.iloc[0]-1):.0%}'))
         ax_log.grid(True, which="both")
         increment += 2
 
@@ -541,7 +546,11 @@ class Result:
             for perf, name in zip(performances[1:], names[1:]):
                 te = (perf.pct_change() - performances[0].pct_change()).dropna()
                 te = (1 + te).cumprod() - 1
-                ax_te.plot(te.index, te, label=name, linewidth=2)
+                if name in highlighted_strat:
+                    ax_te.plot(te.index, te, label=name, linewidth=2)
+                else:
+                    pass
+                    # ax_te.plot(te.index, te, label=name, linewidth=2, alpha=0.2)
             ax_te.set_title("Performance rapport au Benchmark", fontsize=16)
             ax_te.set_ylabel("Écart de performance")
             ax_te.legend(loc="upper left", fontsize=10)
@@ -655,11 +664,11 @@ class Result:
         print(metrics_df.T.to_markdown())
 
 
-    def visualize(self) -> None:
+    def visualize(self, highlighted_strat: str) -> None:
         """
         Compare les performances de la stratégie actuelle avec d'autres si disponible.
         """
-        self.compare()
+        self.compare(highlighted_strat)
 
     def positions(self, status: str = None) -> None:
         """
@@ -765,8 +774,10 @@ class Result:
                 
         # Création d'un DataFrame pour les métriques
         metrics_df = pd.DataFrame(metrics)
+        
         metrics_df.index = names
-
+        metrics_df.to_excel("Test.xlsx")
+        
         if highlight_extremes:
             def highlight_extremes_higher_better(s):
                 s = s.str.rstrip('%').astype(float)
